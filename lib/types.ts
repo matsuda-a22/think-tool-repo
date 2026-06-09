@@ -32,10 +32,17 @@ export type TableBlock = {
   rows: TableRow[]
 }
 
+export type AiPrompt = {
+  label: string
+  description: string
+}
+
 export type MemoBlock = {
   id: string
   type: "memo"
   content: string
+  /** AI提案の切り口から生成されたメモブロック。上段に読み取り専用で表示する */
+  aiPrompt?: AiPrompt
 }
 
 export type TreeNode = {

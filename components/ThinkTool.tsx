@@ -8,8 +8,8 @@ import {
 } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Download, Upload, BrainCircuit, Settings } from "lucide-react"
-import { useExportImport, useSelectedSubTheme } from "@/lib/store"
+import { Download, Upload, BrainCircuit, Settings, Loader2 } from "lucide-react"
+import { useExportImport, useSelectedSubTheme, useSyncing } from "@/lib/store"
 import PaneTheme from "./PaneTheme"
 import PaneWriteOut from "./PaneWriteOut"
 import PaneActions from "./PaneActions"
@@ -45,6 +45,7 @@ function SubThemeBar() {
 
 export default function ThinkTool() {
   const { exportJson, importJson } = useExportImport()
+  const syncing = useSyncing()
   const fileRef = useRef<HTMLInputElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [importConfirmOpen, setImportConfirmOpen] = useState(false)
@@ -56,6 +57,12 @@ export default function ThinkTool() {
       <header className="flex items-center gap-2 px-4 py-2 border-b bg-background shrink-0">
         <BrainCircuit className="h-5 w-5 text-primary" />
         <span className="font-semibold text-sm mr-auto">思考整理ツール</span>
+        {syncing && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            保存中…
+          </span>
+        )}
         <Button variant="outline" size="sm" onClick={exportJson}>
           <Download className="h-3.5 w-3.5 mr-1" />
           エクスポート

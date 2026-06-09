@@ -5,6 +5,7 @@ import React, {
   useContext,
   useReducer,
   useEffect,
+  useRef,
   useCallback,
   type Dispatch,
 } from "react"
@@ -26,6 +27,7 @@ import type {
   CostEntry,
   Source,
   Stakeholder,
+  AiPrompt,
 } from "./types"
 import { uid } from "./utils"
 
@@ -66,6 +68,7 @@ export type Action =
   | { type: "ADD_BLOCK"; themeId: string; subId: string; fineId: string; blockType: "memo" | "tree" }
   | { type: "ADD_TABLE_BLOCK"; themeId: string; subId: string; fineId: string; columns: TableColumn[] }
   | { type: "ADD_MEMO_WITH_CONTENT"; themeId: string; subId: string; fineId: string; content: string }
+  | { type: "ADD_MEMO_WITH_AI_PROMPT"; themeId: string; subId: string; fineId: string; aiPrompt: AiPrompt }
   | { type: "UPDATE_BLOCK"; themeId: string; subId: string; fineId: string; block: Block }
   | { type: "DELETE_BLOCK"; themeId: string; subId: string; fineId: string; blockId: string }
   | { type: "REORDER_BLOCK"; themeId: string; subId: string; fineId: string; blockId: string; direction: "up" | "down" }
@@ -305,6 +308,10 @@ function reducer(state: Store, action: Action): Store {
       return mapFineTheme(state, action.themeId, action.subId, action.fineId, f => ({
         ...f, blocks: [...f.blocks, { id: uid(), type: "memo", content: action.content }],
       }))
+    case "ADD_MEMO_WITH_AI_PROMPT":
+      return mapFineTheme(state, action.themeId, action.subId, action.fineId, f => ({
+        ...f, blocks: [...f.blocks, { id: uid(), type: "memo", content: "", aiPrompt: action.aiPrompt }],
+      }))
     case "UPDATE_BLOCK":
       return mapBlock(state, action.themeId, action.subId, action.fineId, action.block.id, () => action.block)
     case "DELETE_BLOCK":
@@ -468,53 +475,94 @@ function reducer(state: Store, action: Action): Store {
 const StoreContext = createContext<Store>(makeInitialState())
 const DispatchContext = createContext<Dispatch<Action>>(() => {})
 
-const STORAGE_KEY = "think-tool-v2"
+/** DB への保存が進行中かどうか（楽観的更新のフラグ） */
+const SyncingContext = createContext<boolean>(false)
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, makeInitialState())
+  const [syncing, setSyncing] = React.useState(false)
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // 初回マウント時に DB から読み込む
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as Store
-        // サブテーマに entries が無い場合のマイグレーション
-        const migrated: Store = {
-          ...parsed,
-          globalStakeholders: (parsed as Store).globalStakeholders ?? [],
-          themes: parsed.themes.map(t => ({
-            ...t,
-            subThemes: t.subThemes.map(s => ({
-              ...s,
-              entries: (s as SubTheme & { tasks?: unknown[] }).entries ?? [],
-              sources: s.sources ?? [],
-            })),
-            resolvedSubThemes: (t.resolvedSubThemes ?? []).map(s => ({
-              ...s,
-              entries: (s as SubTheme & { tasks?: unknown[] }).entries ?? [],
-              sources: s.sources ?? [],
-            })),
-          })),
+    fetch("/api/store")
+      .then(res => {
+        if (!res.ok) throw new Error("fetch failed")
+        return res.json() as Promise<Store>
+      })
+      .then(data => {
+        if (data.themes.length > 0 || data.globalStakeholders.length > 0) {
+          dispatch({ type: "IMPORT", store: data })
+        } else {
+          // DB が空なら localStorage からマイグレーション
+          try {
+            const raw = localStorage.getItem("think-tool-v2")
+            if (raw) {
+              const parsed = JSON.parse(raw) as Store
+              const migrated: Store = {
+                ...parsed,
+                globalStakeholders: parsed.globalStakeholders ?? [],
+                themes: parsed.themes.map(t => ({
+                  ...t,
+                  subThemes: t.subThemes.map(s => ({
+                    ...s,
+                    entries: (s as SubTheme & { tasks?: unknown[] }).entries ?? [],
+                    sources: s.sources ?? [],
+                  })),
+                  resolvedSubThemes: (t.resolvedSubThemes ?? []).map(s => ({
+                    ...s,
+                    entries: (s as SubTheme & { tasks?: unknown[] }).entries ?? [],
+                    sources: s.sources ?? [],
+                  })),
+                })),
+              }
+              dispatch({ type: "IMPORT", store: migrated })
+            }
+          } catch {
+            // ignore
+          }
         }
-        dispatch({ type: "IMPORT", store: migrated })
-      }
-    } catch {
-      // ignore
-    }
+      })
+      .catch(err => {
+        console.warn("[StoreProvider] DB fetch failed, falling back to localStorage", err)
+        try {
+          const raw = localStorage.getItem("think-tool-v2")
+          if (raw) dispatch({ type: "IMPORT", store: JSON.parse(raw) as Store })
+        } catch {
+          // ignore
+        }
+      })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // state 変化のたびに DB へ debounce 保存（500ms 待って最後の変更だけ送る）
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      setSyncing(true)
+      fetch("/api/store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state),
+      })
+        .catch(err => console.warn("[StoreProvider] DB save failed", err))
+        .finally(() => setSyncing(false))
+    }, 500)
   }, [state])
 
   return (
     <StoreContext.Provider value={state}>
       <DispatchContext.Provider value={dispatch}>
-        {children}
+        <SyncingContext.Provider value={syncing}>
+          {children}
+        </SyncingContext.Provider>
       </DispatchContext.Provider>
     </StoreContext.Provider>
   )
+}
+
+export function useSyncing() {
+  return useContext(SyncingContext)
 }
 
 export function useStore() {

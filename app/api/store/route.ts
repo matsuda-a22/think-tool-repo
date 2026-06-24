@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import * as t from "@/lib/db/schema"
-import { asc, eq, inArray } from "drizzle-orm"
+import { asc } from "drizzle-orm"
 import type { Store, Theme, SubTheme, FineTheme, Block, ActionEntry, Source, Stakeholder } from "@/lib/types"
 
 // ---------------------------------------------------------------------------
@@ -128,6 +128,14 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request) {
+  const editToken = process.env.EDIT_TOKEN
+  if (editToken) {
+    const provided = request.headers.get("x-edit-token")
+    if (provided !== editToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+  }
+
   try {
     const store = (await request.json()) as Store
 

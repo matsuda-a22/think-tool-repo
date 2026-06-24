@@ -5,7 +5,6 @@ import React, {
   useContext,
   useReducer,
   useEffect,
-  useRef,
   useCallback,
   type Dispatch,
 } from "react"
@@ -26,7 +25,6 @@ import type {
   MemoEntry,
   CostEntry,
   Source,
-  Stakeholder,
   AiPrompt,
 } from "./types"
 import { uid } from "./utils"
@@ -478,9 +476,33 @@ const DispatchContext = createContext<Dispatch<Action>>(() => {})
 /** DB への保存が進行中かどうか（楽観的更新のフラグ） */
 const SyncingContext = createContext<boolean>(false)
 
+/** 閲覧モード（編集不可）かどうか */
+const ReadOnlyContext = createContext<boolean>(false)
+
+const EDIT_TOKEN_KEY = "think-tool-edit-token"
+
+/** URL の ?edit=TOKEN を localStorage に保存し、現在の編集トークンを返す */
+function loadEditToken(): string | null {
+  if (typeof window === "undefined") return null
+  const params = new URLSearchParams(window.location.search)
+  const tokenFromUrl = params.get("edit")
+  if (tokenFromUrl) {
+    localStorage.setItem(EDIT_TOKEN_KEY, tokenFromUrl)
+    // URL からトークンを消す（URLバーをすっきりさせる）
+    const url = new URL(window.location.href)
+    url.searchParams.delete("edit")
+    window.history.replaceState({}, "", url.toString())
+    return tokenFromUrl
+  }
+  return localStorage.getItem(EDIT_TOKEN_KEY)
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, makeInitialState())
   const [syncing, setSyncing] = React.useState(false)
+  const [editToken] = React.useState<string | null>(() => loadEditToken())
+  const readOnly = !editToken
+  const editTokenRef = React.useRef<string | null>(editToken)
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 初回マウント時に DB から読み込む
@@ -532,17 +554,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           // ignore
         }
       })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // state 変化のたびに DB へ debounce 保存（500ms 待って最後の変更だけ送る）
   useEffect(() => {
+    const token = editTokenRef.current
+    if (!token) return  // 閲覧モードは保存しない
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       setSyncing(true)
       fetch("/api/store", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-edit-token": token,
+        },
         body: JSON.stringify(state),
       })
         .catch(err => console.warn("[StoreProvider] DB save failed", err))
@@ -554,7 +580,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     <StoreContext.Provider value={state}>
       <DispatchContext.Provider value={dispatch}>
         <SyncingContext.Provider value={syncing}>
-          {children}
+          <ReadOnlyContext.Provider value={readOnly}>
+            {children}
+          </ReadOnlyContext.Provider>
         </SyncingContext.Provider>
       </DispatchContext.Provider>
     </StoreContext.Provider>
@@ -563,6 +591,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
 export function useSyncing() {
   return useContext(SyncingContext)
+}
+
+export function useReadOnly() {
+  return useContext(ReadOnlyContext)
 }
 
 export function useStore() {

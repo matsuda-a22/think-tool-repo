@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Download, Upload, BrainCircuit, Settings, Loader2 } from "lucide-react"
-import { useExportImport, useSelectedSubTheme, useSyncing } from "@/lib/store"
+import { useExportImport, useReadOnly, useSelectedSubTheme, useSyncing } from "@/lib/store"
 import PaneTheme from "./PaneTheme"
 import PaneWriteOut from "./PaneWriteOut"
 import PaneActions from "./PaneActions"
@@ -46,9 +46,11 @@ function SubThemeBar() {
 export default function ThinkTool() {
   const { exportJson, importJson } = useExportImport()
   const syncing = useSyncing()
+  const readOnly = useReadOnly()
   const fileRef = useRef<HTMLInputElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [importConfirmOpen, setImportConfirmOpen] = useState(false)
+  const [pendingFileName, setPendingFileName] = useState<string | null>(null)
   const pendingFileRef = useRef<File | null>(null)
 
   return (
@@ -57,24 +59,33 @@ export default function ThinkTool() {
       <header className="flex items-center gap-2 px-4 py-2 border-b bg-background shrink-0">
         <BrainCircuit className="h-5 w-5 text-primary" />
         <span className="font-semibold text-sm mr-auto">思考整理ツール</span>
+        {readOnly && (
+          <Badge variant="secondary" className="text-xs text-muted-foreground">
+            閲覧モード
+          </Badge>
+        )}
         {syncing && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
             保存中…
           </span>
         )}
-        <Button variant="outline" size="sm" onClick={exportJson}>
-          <Download className="h-3.5 w-3.5 mr-1" />
-          エクスポート
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-          <Upload className="h-3.5 w-3.5 mr-1" />
-          インポート
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
-          <Settings className="h-3.5 w-3.5 mr-1" />
-          設定
-        </Button>
+        {!readOnly && (
+          <>
+            <Button variant="outline" size="sm" onClick={exportJson}>
+              <Download className="h-3.5 w-3.5 mr-1" />
+              エクスポート
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+              <Upload className="h-3.5 w-3.5 mr-1" />
+              インポート
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Settings className="h-3.5 w-3.5 mr-1" />
+              設定
+            </Button>
+          </>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -84,6 +95,7 @@ export default function ThinkTool() {
             const f = e.target.files?.[0]
             if (f) {
               pendingFileRef.current = f
+              setPendingFileName(f.name)
               setImportConfirmOpen(true)
             }
             e.target.value = ""
@@ -93,10 +105,10 @@ export default function ThinkTool() {
           <DialogContent className="sm:max-w-sm">
             <DialogTitle className="text-sm">データをインポート</DialogTitle>
             <DialogDescription>
-              「{pendingFileRef.current?.name}」を読み込むと、現在のデータがすべて置き換えられます。この操作は取り消せません。
+              「{pendingFileName}」を読み込むと、現在のデータがすべて置き換えられます。この操作は取り消せません。
             </DialogDescription>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" size="sm" onClick={() => { setImportConfirmOpen(false); pendingFileRef.current = null }}>
+              <Button variant="outline" size="sm" onClick={() => { setImportConfirmOpen(false); pendingFileRef.current = null; setPendingFileName(null) }}>
                 キャンセル
               </Button>
               <Button
@@ -105,6 +117,7 @@ export default function ThinkTool() {
                 onClick={() => {
                   if (pendingFileRef.current) importJson(pendingFileRef.current)
                   pendingFileRef.current = null
+                  setPendingFileName(null)
                   setImportConfirmOpen(false)
                 }}
               >

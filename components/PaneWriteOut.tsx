@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Plus, Trash2, ChevronDown, Table2, FileText, Network, Sparkles, GripVertical, CheckSquare, Columns3, LayoutList, ChevronUp } from "lucide-react"
+import { Plus, Trash2, ChevronDown, Table2, FileText, Network, Sparkles, GripVertical, CheckSquare, Columns3, LayoutList } from "lucide-react"
 import {
   DndContext,
   closestCenter,
@@ -29,7 +29,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { cn } from "@/lib/utils"
 import { useDispatch, useSelectedSubTheme } from "@/lib/store"
-import type { Block, FineTheme, TableColumn, TreeNode, AiPrompt } from "@/lib/types"
+import type { Block, FineTheme, TableColumn, TreeNode } from "@/lib/types"
 import { uid } from "@/lib/utils"
 import TableBlock from "./blocks/TableBlock"
 import MemoBlock from "./blocks/MemoBlock"
@@ -41,9 +41,13 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog"
-import AiPanel from "./AiPanel"
+import AiPanel, { type AiContextScope } from "./AiPanel"
 import MicButton from "@/components/ui/MicButton"
-import type { SubTheme } from "@/lib/types"
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable"
 
 // ---------------------------------------------------------------------------
 // Table preset definitions
@@ -139,7 +143,6 @@ function InlineEdit({
       ref.current.select()
     }
   }, [editing])
-  useEffect(() => { setDraft(value) }, [value])
 
   if (editing) {
     return (
@@ -183,18 +186,17 @@ function countTreeNodes(nodes: TreeNode[]): number {
 // Sortable block row
 // ---------------------------------------------------------------------------
 function SortableBlockRow({
-  block, themeId, subId, fineId, fineName,
+  block, themeId, subId, fineId, fineName, onRequestAiMemo,
 }: {
   block: Block
   themeId: string
   subId: string
   fineId: string
   fineName: string
+  onRequestAiMemo?: (fineId: string, blockId: string) => void
 }) {
   const dispatch = useDispatch()
   const [deleteTreeOpen, setDeleteTreeOpen] = useState(false)
-  const [deleteMemoOpen, setDeleteMemoOpen] = useState(false)
-  const [deleteTableOpen, setDeleteTableOpen] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: block.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
@@ -205,6 +207,18 @@ function SortableBlockRow({
       {block.type === "memo" ? (
         <div className="space-y-1">
           <div className="flex items-center justify-end gap-1 min-h-5">
+            {onRequestAiMemo && block.content.trim() && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 text-muted-foreground hover:text-primary"
+                title="このメモだけを題材に AI 提案"
+                onClick={() => onRequestAiMemo(fineId, block.id)}
+              >
+                <Sparkles className="h-3 w-3" />
+              </Button>
+            )}
             <MicButton
               size="sm"
               onResult={text => {
@@ -234,36 +248,13 @@ function SortableBlockRow({
               variant="ghost"
               size="icon"
               className="h-5 w-5 text-destructive opacity-0 group-hover/block:opacity-100 transition-opacity"
-              onClick={() => setDeleteMemoOpen(true)}
+              onClick={() => dispatch({ type: "DELETE_BLOCK", themeId, subId, fineId, blockId: block.id })}
               title="削除"
             >
               <Trash2 className="h-3 w-3" />
             </Button>
           </div>
           <MemoBlock block={block} themeId={themeId} subId={subId} fineId={fineId} />
-          <Dialog open={deleteMemoOpen} onOpenChange={setDeleteMemoOpen}>
-            <DialogContent className="sm:max-w-sm">
-              <DialogTitle className="text-sm">メモブロックを削除</DialogTitle>
-              <DialogDescription>
-                このメモブロックを削除しますか？この操作は取り消せません。
-              </DialogDescription>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" size="sm" onClick={() => setDeleteMemoOpen(false)}>
-                  キャンセル
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    dispatch({ type: "DELETE_BLOCK", themeId, subId, fineId, blockId: block.id })
-                    setDeleteMemoOpen(false)
-                  }}
-                >
-                  削除
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       ) : block.type === "table" ? (
         <div className="space-y-1">
@@ -281,36 +272,13 @@ function SortableBlockRow({
               variant="ghost"
               size="icon"
               className="h-5 w-5 text-destructive opacity-0 group-hover/block:opacity-100 transition-opacity"
-              onClick={() => setDeleteTableOpen(true)}
+              onClick={() => dispatch({ type: "DELETE_BLOCK", themeId, subId, fineId, blockId: block.id })}
               title="ブロックを削除"
             >
               <Trash2 className="h-3 w-3" />
             </Button>
           </div>
           <TableBlock block={block} themeId={themeId} subId={subId} fineId={fineId} />
-          <Dialog open={deleteTableOpen} onOpenChange={setDeleteTableOpen}>
-            <DialogContent className="sm:max-w-sm">
-              <DialogTitle className="text-sm">テーブルブロックを削除</DialogTitle>
-              <DialogDescription>
-                このテーブルブロックを削除しますか？この操作は取り消せません。
-              </DialogDescription>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" size="sm" onClick={() => setDeleteTableOpen(false)}>
-                  キャンセル
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    dispatch({ type: "DELETE_BLOCK", themeId, subId, fineId, blockId: block.id })
-                    setDeleteTableOpen(false)
-                  }}
-                >
-                  削除
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       ) : block.type === "tree" ? (
         <div className="relative">
@@ -373,20 +341,18 @@ function SortableBlockRow({
 // FineThemeSection
 // ---------------------------------------------------------------------------
 function FineThemeSection({
-  fine, themeId, subId, sub, autoEdit, dragHandleProps,
+  fine, themeId, subId, autoEdit, dragHandleProps, onRequestAiMemo,
 }: {
   fine: FineTheme
   themeId: string
   subId: string
-  sub: SubTheme
   autoEdit?: boolean
   dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>
+  onRequestAiMemo?: (fineId: string, blockId: string) => void
 }) {
   const dispatch = useDispatch()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const [tablePresetOpen, setTablePresetOpen] = useState(false)
-  const [deleteFineOpen, setDeleteFineOpen] = useState(false)
-  const [aiOpen, setAiOpen] = useState(false)
 
   function handleBlockDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -401,137 +367,79 @@ function FineThemeSection({
     })
   }
 
-  function handleAddBlock(aiPrompt: AiPrompt) {
-    dispatch({ type: "ADD_MEMO_WITH_AI_PROMPT", themeId, subId, fineId: fine.id, aiPrompt })
-  }
-
   return (
-    <div className={cn("border rounded-lg overflow-hidden", aiOpen && "border-primary/50")}>
-      {/* ヘッダー */}
-      <div className="px-3 pt-3 pb-2">
-        <div className="flex items-center gap-1 group/fine">
-          {dragHandleProps && (
-            <button
-              {...dragHandleProps}
-              className="text-muted-foreground opacity-0 group-hover/fine:opacity-100 cursor-grab active:cursor-grabbing shrink-0"
-              type="button"
-              title="ドラッグして並び替え"
-            >
-              <GripVertical className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <InlineEdit
-            value={fine.name}
-            placeholder="困りごと・悩みごと・考えごと"
-            onSave={name => dispatch({ type: "UPDATE_FINE_THEME", themeId, subId, fineId: fine.id, name })}
-            className="flex-1"
-            autoEdit={autoEdit}
-          />
-          <div className="flex items-center gap-0.5 shrink-0">
-            {/* ✨ AI提案トグル */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-6 w-6 transition-colors",
-                aiOpen ? "text-primary" : "text-muted-foreground opacity-0 group-hover/fine:opacity-100"
-              )}
-              onClick={() => setAiOpen(v => !v)}
-              title={aiOpen ? "AI提案を閉じる" : "AI提案を開く"}
-            >
-              {aiOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
-            </Button>
-            <Button
-              variant="ghost" size="icon"
-              className="h-5 w-5 text-destructive opacity-0 group-hover/fine:opacity-100"
-              onClick={() => setDeleteFineOpen(true)}
-            ><Trash2 className="h-3 w-3" /></Button>
-          </div>
+    <div className="border rounded-lg p-3 space-y-3">
+      <div className="flex items-center gap-1 group/fine">
+        {dragHandleProps && (
+          <button
+            {...dragHandleProps}
+            className="text-muted-foreground opacity-0 group-hover/fine:opacity-100 cursor-grab active:cursor-grabbing shrink-0"
+            type="button"
+            title="ドラッグして並び替え"
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <InlineEdit
+          value={fine.name}
+          placeholder="困りごと・悩みごと・考えごと"
+          onSave={name => dispatch({ type: "UPDATE_FINE_THEME", themeId, subId, fineId: fine.id, name })}
+          className="flex-1"
+          autoEdit={autoEdit}
+        />
+        <div className="flex items-center gap-0.5 opacity-0 group-hover/fine:opacity-100 shrink-0">
+          <Button
+            variant="ghost" size="icon"
+            className="h-5 w-5 text-destructive"
+            onClick={() => dispatch({ type: "DELETE_FINE_THEME", themeId, subId, fineId: fine.id })}
+          ><Trash2 className="h-3 w-3" /></Button>
         </div>
       </div>
 
-      <Dialog open={deleteFineOpen} onOpenChange={setDeleteFineOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogTitle className="text-sm">考えごとを削除</DialogTitle>
-          <DialogDescription>
-            「{fine.name.trim() || "（名称未設定）"}」を削除しますか？
-            {fine.blocks.length > 0 && ` ブロック ${fine.blocks.length} 件も一緒に削除されます。`}
-            この操作は取り消せません。
-          </DialogDescription>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" size="sm" onClick={() => setDeleteFineOpen(false)}>
-              キャンセル
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                dispatch({ type: "DELETE_FINE_THEME", themeId, subId, fineId: fine.id })
-                setDeleteFineOpen(false)
-              }}
-            >
-              削除
-            </Button>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleBlockDragEnd}>
+        <SortableContext items={fine.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3">
+            {fine.blocks.map(block => (
+              <SortableBlockRow
+                key={block.id}
+                block={block}
+                themeId={themeId}
+                subId={subId}
+                fineId={fine.id}
+                fineName={fine.name}
+                onRequestAiMemo={onRequestAiMemo}
+              />
+            ))}
           </div>
-        </DialogContent>
-      </Dialog>
+        </SortableContext>
+      </DndContext>
 
-      {/* ブロックエリア */}
-      <div className="px-3 pb-3 space-y-3">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleBlockDragEnd}>
-          <SortableContext items={fine.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {fine.blocks.map(block => (
-                <SortableBlockRow
-                  key={block.id}
-                  block={block}
-                  themeId={themeId}
-                  subId={subId}
-                  fineId={fine.id}
-                  fineName={fine.name}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+      <DropdownMenu>
+        <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 text-xs gap-1")}>
+          <Plus className="h-3.5 w-3.5" />
+          <ChevronDown className="h-3 w-3" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onClick={() => dispatch({ type: "ADD_BLOCK", themeId, subId, fineId: fine.id, blockType: "memo" })}>
+            <FileText className="h-3.5 w-3.5 mr-2" /> メモ
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTablePresetOpen(true)}>
+            <Table2 className="h-3.5 w-3.5 mr-2" /> テーブル
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => dispatch({ type: "ADD_BLOCK", themeId, subId, fineId: fine.id, blockType: "tree" })}>
+            <Network className="h-3.5 w-3.5 mr-2" /> ツリー
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 text-xs gap-1")}>
-            <Plus className="h-3.5 w-3.5" />
-            <ChevronDown className="h-3 w-3" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => dispatch({ type: "ADD_BLOCK", themeId, subId, fineId: fine.id, blockType: "memo" })}>
-              <FileText className="h-3.5 w-3.5 mr-2" /> メモ
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTablePresetOpen(true)}>
-              <Table2 className="h-3.5 w-3.5 mr-2" /> テーブル
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => dispatch({ type: "ADD_BLOCK", themeId, subId, fineId: fine.id, blockType: "tree" })}>
-              <Network className="h-3.5 w-3.5 mr-2" /> ツリー
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <TablePresetDialog
-          open={tablePresetOpen}
-          onSelect={columns => {
-            dispatch({ type: "ADD_TABLE_BLOCK", themeId, subId, fineId: fine.id, columns })
-            setTablePresetOpen(false)
-          }}
-          onClose={() => setTablePresetOpen(false)}
-        />
-      </div>
-
-      {/* AIパネル（インライン展開） */}
-      {aiOpen && (
-        <AiPanel
-          subTheme={sub}
-          fine={fine}
-          onAddBlock={handleAddBlock}
-          onClose={() => setAiOpen(false)}
-        />
-      )}
+      <TablePresetDialog
+        open={tablePresetOpen}
+        onSelect={columns => {
+          dispatch({ type: "ADD_TABLE_BLOCK", themeId, subId, fineId: fine.id, columns })
+          setTablePresetOpen(false)
+        }}
+        onClose={() => setTablePresetOpen(false)}
+      />
     </div>
   )
 }
@@ -540,8 +448,8 @@ function SortableFineThemeSection(props: {
   fine: FineTheme
   themeId: string
   subId: string
-  sub: SubTheme
   autoEdit?: boolean
+  onRequestAiMemo?: (fineId: string, blockId: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.fine.id })
@@ -559,9 +467,29 @@ function SortableFineThemeSection(props: {
 export default function PaneWriteOut() {
   const dispatch = useDispatch()
   const { sub, themeId } = useSelectedSubTheme()
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiInitialScope, setAiInitialScope] = useState<AiContextScope | null>(null)
+
+  function openAiForMemo(fineId: string, blockId: string) {
+    setAiInitialScope({ kind: "memo", fineId, blockId })
+    setActiveFineId(fineId)
+    setAiOpen(true)
+  }
+
+  function toggleAiPanel() {
+    setAiOpen(v => {
+      if (!v) setAiInitialScope(null)
+      return !v
+    })
+  }
+  const [activeFineId, setActiveFineId] = useState<string | null>(null)
   const [newlyAddedFineId, setNewlyAddedFineId] = useState<string | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  useEffect(() => {
+    if (sub?.fineThemes[0]) setActiveFineId(sub.fineThemes[0].id)
+  }, [sub?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fineIds = sub?.fineThemes.map(f => f.id).join(",") ?? ""
   const prevFineIdsRef = useRef<string>("")
@@ -589,11 +517,32 @@ export default function PaneWriteOut() {
     })
   }
 
+  function handleAddSource(url: string, _title: string) {
+    if (!sub || !themeId) return
+    dispatch({
+      type: "ADD_SOURCE",
+      themeId,
+      subId: sub.id,
+      source: { kind: "url", url, base64: null, comment: _title || "" },
+    })
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden border-r">
       {/* Header */}
       <div className="px-3 py-2 border-b shrink-0 flex items-center gap-2">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">② 書き出し</span>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">② 書き出し</span>
+        {sub && (
+          <Button
+            variant={aiOpen ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-xs shrink-0 gap-1 ml-auto"
+            onClick={toggleAiPanel}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            AI 提案
+          </Button>
+        )}
       </div>
 
       {!sub && (
@@ -603,35 +552,78 @@ export default function PaneWriteOut() {
       )}
 
       {sub && themeId && (
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="p-3 space-y-4">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleFineDragEnd}>
-              <SortableContext items={sub.fineThemes.map(f => f.id)} strategy={verticalListSortingStrategy}>
-                {sub.fineThemes.map((fine, i) => (
-                  <div key={fine.id}>
-                    {i > 0 && <Separator className="mb-4" />}
-                    <SortableFineThemeSection
-                      fine={fine}
-                      themeId={themeId}
-                      subId={sub.id}
-                      sub={sub}
-                      autoEdit={newlyAddedFineId === fine.id}
-                    />
-                  </div>
-                ))}
-              </SortableContext>
-            </DndContext>
+        <div className="flex flex-col flex-1 min-h-0">
+          {(() => {
+            const writeScroll = (
+              <ScrollArea className={aiOpen ? "h-full" : "flex-1 min-h-0"}>
+                <div className="p-3 space-y-4">
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleFineDragEnd}>
+                    <SortableContext items={sub.fineThemes.map(f => f.id)} strategy={verticalListSortingStrategy}>
+                      {sub.fineThemes.map((fine, i) => (
+                        <div key={fine.id} onClick={() => setActiveFineId(fine.id)}>
+                          {i > 0 && <Separator className="mb-4" />}
+                          <SortableFineThemeSection
+                            fine={fine}
+                            themeId={themeId}
+                            subId={sub.id}
+                            autoEdit={newlyAddedFineId === fine.id}
+                            onRequestAiMemo={openAiForMemo}
+                          />
+                        </div>
+                      ))}
+                    </SortableContext>
+                  </DndContext>
 
-            <Button
-              variant="outline"
-              className="w-full h-9 text-xs border-dashed text-muted-foreground hover:text-foreground"
-              onClick={() => dispatch({ type: "ADD_FINE_THEME", themeId, subId: sub.id })}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              考えごとを追加
-            </Button>
-          </div>
-        </ScrollArea>
+                  <Button
+                    variant="outline"
+                    className="w-full h-9 text-xs border-dashed text-muted-foreground hover:text-foreground"
+                    onClick={() => dispatch({ type: "ADD_FINE_THEME", themeId, subId: sub.id })}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    考えごとを追加
+                  </Button>
+                </div>
+              </ScrollArea>
+            )
+
+            const aiPanel = (
+              <AiPanel
+                key={
+                  aiInitialScope?.kind === "memo"
+                    ? `memo-${aiInitialScope.blockId}`
+                    : aiInitialScope?.kind === "fine"
+                      ? `fine-${aiInitialScope.fineId}`
+                      : "all"
+                }
+                subTheme={sub}
+                onInsertMemo={(text, fineId) => {
+                  dispatch({ type: "ADD_MEMO_WITH_CONTENT", themeId, subId: sub.id, fineId, content: text })
+                }}
+                onAddSource={handleAddSource}
+                defaultFineThemeId={activeFineId}
+                initialScope={aiInitialScope}
+                onClose={() => {
+                  setAiOpen(false)
+                  setAiInitialScope(null)
+                }}
+              />
+            )
+
+            if (!aiOpen) return writeScroll
+
+            return (
+              <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
+                <ResizablePanel id="pane2-write" defaultSize={62} minSize={22}>
+                  {writeScroll}
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel id="pane2-ai" defaultSize={38} minSize={24}>
+                  {aiPanel}
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            )
+          })()}
+        </div>
       )}
     </div>
   )

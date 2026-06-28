@@ -28,7 +28,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { cn } from "@/lib/utils"
-import { useDispatch, useSelectedSubTheme } from "@/lib/store"
+import { useDispatch, useReadOnly, useSelectedSubTheme } from "@/lib/store"
 import type { Block, FineTheme, TableColumn, TreeNode } from "@/lib/types"
 import { uid } from "@/lib/utils"
 import TableBlock from "./blocks/TableBlock"
@@ -467,16 +467,23 @@ function SortableFineThemeSection(props: {
 export default function PaneWriteOut() {
   const dispatch = useDispatch()
   const { sub, themeId } = useSelectedSubTheme()
+  const readOnly = useReadOnly()
   const [aiOpen, setAiOpen] = useState(false)
   const [aiInitialScope, setAiInitialScope] = useState<AiContextScope | null>(null)
+  const [showDemoNotice, setShowDemoNotice] = useState(false)
 
   function openAiForMemo(fineId: string, blockId: string) {
+    if (readOnly) { setShowDemoNotice(true); return }
     setAiInitialScope({ kind: "memo", fineId, blockId })
     setActiveFineId(fineId)
     setAiOpen(true)
   }
 
   function toggleAiPanel() {
+    if (readOnly) {
+      setShowDemoNotice(v => !v)
+      return
+    }
     setAiOpen(v => {
       if (!v) setAiInitialScope(null)
       return !v
@@ -609,7 +616,39 @@ export default function PaneWriteOut() {
               />
             )
 
-            if (!aiOpen) return writeScroll
+            if (!aiOpen && !showDemoNotice) return writeScroll
+
+            if (showDemoNotice) {
+              return (
+                <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
+                  <ResizablePanel id="pane2-write" defaultSize={62} minSize={22}>
+                    {writeScroll}
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel id="pane2-ai" defaultSize={38} minSize={24}>
+                    <div className="border-t bg-muted/30 flex flex-col h-full min-h-0">
+                      <div className="flex items-center gap-2 px-3 py-2 border-b bg-background shrink-0">
+                        <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="text-xs font-semibold flex-1">AI 提案</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={() => setShowDemoNotice(false)}
+                        >
+                          <span className="text-xs leading-none">✕</span>
+                        </Button>
+                      </div>
+                      <div className="flex-1 flex items-center justify-center px-4">
+                        <p className="text-sm text-muted-foreground text-center leading-relaxed">
+                          デモ版のため、AI提案機能はご利用いただけません。
+                        </p>
+                      </div>
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              )
+            }
 
             return (
               <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">

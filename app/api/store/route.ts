@@ -3,6 +3,25 @@ import { db } from "@/lib/db"
 import * as t from "@/lib/db/schema"
 import { asc } from "drizzle-orm"
 import type { Store, Theme, SubTheme, FineTheme, Block, ActionEntry, Source, Stakeholder } from "@/lib/types"
+import { neon } from "@neondatabase/serverless"
+import { drizzle } from "drizzle-orm/neon-http"
+import { migrate } from "drizzle-orm/neon-http/migrator"
+import path from "path"
+
+let migrated = false
+
+async function ensureMigrated() {
+  if (migrated) return
+  try {
+    const sql = neon(process.env.DATABASE_URL!)
+    const mdb = drizzle(sql)
+    await migrate(mdb, { migrationsFolder: path.join(process.cwd(), "lib/db/migrations") })
+    migrated = true
+  } catch {
+    // すでに適用済みの場合はエラーを無視
+    migrated = true
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/store
@@ -10,6 +29,7 @@ import type { Store, Theme, SubTheme, FineTheme, Block, ActionEntry, Source, Sta
 // ---------------------------------------------------------------------------
 
 export async function GET() {
+  await ensureMigrated()
   try {
     const [
       allThemes,
